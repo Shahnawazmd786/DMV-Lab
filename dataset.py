@@ -1,77 +1,94 @@
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # Fix GUI issue
 import matplotlib.pyplot as plt
 import re
-
-# 👉 Enable multiple figures at same time
-plt.ion()
 
 # Load dataset
 df = pd.read_csv('company_dataset.csv')
 
-# Take only 20 records
-df_20 = df.head(20).copy()
-
 # ------------------ Data Cleaning ------------------
 
-# Ratings to numeric
-df_20['ratings'] = pd.to_numeric(df_20['ratings'], errors='coerce')
+df['ratings'] = pd.to_numeric(df['ratings'], errors='coerce')
 
-# Clean review count
 def clean_reviews(x):
     x = str(x)
     x = re.sub(r'[^0-9.]', '', x)
     return float(x) if x else None
 
-df_20['review_count'] = df_20['review_count'].apply(clean_reviews)
+df['review_count'] = df['review_count'].apply(clean_reviews)
 
-# Extract employee count
-df_20['employee_count'] = df_20['employees'].str.extract(r'(\d+)').astype(float)
+def extract_employee_count(x):
+    if pd.isna(x):
+        return None
+    x = str(x).lower().replace(',', '')
+    
+    if 'k' in x:
+        return float(re.findall(r'\d+', x)[0]) * 1000
+    
+    nums = re.findall(r'\d+', x)
+    return float(nums[0]) if nums else None
 
-# ------------------ 1. Pie Chart ------------------
-year_counts = df_20['years'].value_counts()
+df['employee_count'] = df['employees'].apply(extract_employee_count)
+
+# Drop missing values
+df = df.dropna(subset=['ratings', 'review_count', 'employee_count', 'hq'])
+
+# ------------------ Top 10 Companies ------------------
+
+top_10 = df.sort_values(by='review_count', ascending=False).head(10)
+
+print("\nTop 10 Companies with Headquarters:\n")
+print(top_10[['name', 'hq']].to_string(index=False))
+
+# ------------------ 1. Funnel Chart (Review-wise) ------------------
 
 plt.figure()
-plt.pie(year_counts, labels=year_counts.index, autopct='%1.1f%%')
-plt.title("Companies Year-wise Distribution")
-plt.show()
-
-# ------------------ 2. Funnel Chart ------------------
-review_sorted = df_20.sort_values(by='review_count', ascending=False)
-
-plt.figure()
-plt.barh(review_sorted['name'], review_sorted['review_count'])
-plt.title("Funnel Chart (Review-wise)")
+plt.barh(top_10['name'], top_10['review_count'])
+plt.gca().invert_yaxis()
+plt.title("Funnel Chart (Top 10 Company Reviews)")
 plt.xlabel("Review Count")
 plt.ylabel("Company")
-plt.gca().invert_yaxis()
-plt.show()
+plt.tight_layout()
+plt.savefig("funnel_top10.png")
+plt.close()
 
-# ------------------ 3. Top 10 HQ ------------------
-print("\nTop 10 Companies with Headquarters:\n")
+# ------------------ 2. Bar Chart (HQ-wise count) ------------------
 
-top_10 = df_20[['name', 'hq']].head(10)
+hq_counts = top_10['hq'].value_counts()
 
-for index, row in top_10.iterrows():
-    print(f"{row['name']}  -->  {row['hq']}")
-
-# ------------------ 4. Bar Chart ------------------
 plt.figure()
-plt.bar(df_20['name'], df_20['ratings'])
-plt.xticks(rotation=90)
-plt.title("Company Ratings")
+plt.bar(hq_counts.index, hq_counts.values)
+plt.xticks(rotation=45, ha='right')
+plt.title("Bar Chart (Headquarters Distribution)")
+plt.xlabel("Headquarters")
+plt.ylabel("Number of Companies")
+plt.tight_layout()
+plt.savefig("bar_hq.png")
+plt.close()
+
+# ------------------ 3. Line Chart (Rating-wise) ------------------
+
+plt.figure()
+plt.plot(top_10['name'], top_10['ratings'], marker='o')
+plt.xticks(rotation=45, ha='right')
+plt.title("Line Chart (Top 10 Company Ratings)")
 plt.xlabel("Company")
 plt.ylabel("Rating")
-plt.show()
+plt.tight_layout()
+plt.savefig("line_ratings.png")
+plt.close()
 
-# ------------------ 5. Line Chart ------------------
+# ------------------ 4. Pie Chart (Employee-wise) ------------------
+
 plt.figure()
-plt.plot(df_20['name'], df_20['employee_count'], marker='o')
-plt.xticks(rotation=90)
-plt.title("Employee Count Trend")
-plt.xlabel("Company")
-plt.ylabel("Employee Count")
-plt.show()
+plt.pie(top_10['employee_count'], labels=top_10['name'], autopct='%1.1f%%')
+plt.title("Pie Chart (Employee Distribution - Top 10)")
+plt.tight_layout()
+plt.savefig("pie_employees.png")
+plt.close()
 
-# Keep windows open
-plt.ioff()
-plt.show()
+print("\n📍 Top 10 Companies and Their Headquarters:\n")
+
+for i, row in enumerate(top_10[['name', 'hq']].itertuples(index=False), start=1):
+    print(f"{i}. {row.name}  -->  {row.hq}")
